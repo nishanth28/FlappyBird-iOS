@@ -140,7 +140,67 @@ class GameScene: SKScene,SKPhysicsContactDelegate {
         
         tapStatusNode.run(SKAction.init(named:"Pulse")!)
         
+    }
+    
+    func pipesToScene(){
         
+        pipesSpawned += 2
+        if pipesSpawned % 10 == 0{
+            pipeSpeed -= 0.1
+        }
+        
+        let gap : CGFloat = bird.size.height * 3.5
+        
+        let TopPipeTexture = SKTexture(imageNamed:"pipe1")
+        let bottomPipeTexture = SKTexture(imageNamed:"pipe2")
+        
+        let topPipe = SKSpriteNode(texture:TopPipeTexture)
+        let bottomPipe = SKSpriteNode(texture:bottomPipeTexture)
+        topPipe.anchorPoint = CGPoint(x:0.5,y:0)
+        bottomPipe.anchorPoint = CGPoint(x:0.5,y:1)
+        
+        var randomY : CGFloat = CGFloat(arc4random_uniform(UInt32(self.frame.height/2 * 0.6)))
+        let sign = Int(arc4random_uniform(1000))
+        
+        randomY = sign % 2 == 0 ? randomY : -randomY
+        
+        topPipe.position = CGPoint(x:self.frame.width+topPipe.size.width,y:randomY)
+        
+        topPipe.physicsBody = SKPhysicsBody(rectangleOf:topPipe.size,center:CGPoint(x:0,y:topPipe.size.height/2))
+        topPipe.physicsBody?.isDynamic = false
+        topPipe.physicsBody?.categoryBitMask = enemyMask
+        topPipe.physicsBody?.collisionBitMask = birdMask
+        topPipe.physicsBody?.contactTestBitMask = birdMask
+        
+        topPipe.zPosition = trackZpositions.pipes.rawValue
+        movingGameObjects.addChild(topPipe)
+        
+        let movePipe = SKAction.moveTo(x: -self.frame.width, duration: pipeSpeed)
+        let removePipe = SKAction.removeFromParent()
+        topPipe.run(SKAction.sequence([movePipe,removePipe]))
+        
+        bottomPipe.position = CGPoint(x:self.frame.width+bottomPipe.size.width,y:topPipe.position.y - gap)
+        bottomPipe.physicsBody = SKPhysicsBody(rectangleOf:bottomPipe.size,center:CGPoint(x:0,y:-bottomPipe.size.height/2))
+        bottomPipe.physicsBody?.isDynamic = false
+        bottomPipe.physicsBody?.categoryBitMask = enemyMask
+        bottomPipe.physicsBody?.collisionBitMask = birdMask
+        bottomPipe.physicsBody?.contactTestBitMask = birdMask
+        
+        bottomPipe.zPosition = trackZpositions.pipes.rawValue
+        movingGameObjects.addChild(bottomPipe)
+        
+        bottomPipe.run(SKAction.sequence([movePipe,removePipe]))
+        
+        let crossing = SKNode()
+        crossing.position = CGPoint(x:topPipe.position.x,y:0)
+        crossing.physicsBody = SKPhysicsBody(rectangleOf:CGSize(width:1,height:self.frame.height))
+        crossing.physicsBody?.isDynamic = false
+        crossing.physicsBody?.categoryBitMask = openingMask
+        crossing.physicsBody?.contactTestBitMask = birdMask
+        
+        movingGameObjects.addChild(crossing)
+        
+        crossing.run(SKAction.sequence([movePipe,removePipe]))
         
     }
 
@@ -148,8 +208,11 @@ class GameScene: SKScene,SKPhysicsContactDelegate {
     
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         
-        playGame()
-        
+        if gameOver {
+        startGame()
+        }else{
+            playGame()
+        }
     }
     
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -168,12 +231,79 @@ class GameScene: SKScene,SKPhysicsContactDelegate {
     
     override func update(_ currentTime: TimeInterval) {
         
+        if (self.lastUpdateTime == 0)
+        {
+            self.lastUpdateTime = currentTime
+        }
+        let dt = currentTime - self.lastUpdateTime
+        if dt > 2.5 {
+            if !gameOver{
+                pipesToScene()
+                self.lastUpdateTime = currentTime
+            }
+        }
+    }
+    
+    func startGame(){
+        
+        gameOver = false
+        flappyBirdLabelNode.removeFromParent()
+        tapStatusNode.removeFromParent()
+        movingGameObjects.isPaused = false
+        bird.physicsBody?.isDynamic = true
+        
+        scoreLabelNode = SKLabelNode(fontNamed: "Helvetica Neue")
+        scoreLabelNode.fontSize = 75
+        scoreLabelNode.text = "0"
+        scoreLabelNode.position = CGPoint(x:0,y:self.frame.height/2 - scoreLabelNode.frame.height - 15)
+        scoreLabelNode.zPosition = trackZpositions.labelNodes.rawValue
+        addChild(scoreLabelNode)
+        
+        playGame()
+        
+        
+        
     }
     
     func didBegin(_ contact: SKPhysicsContact) {
         
+        if contact.bodyA.categoryBitMask == openingMask || contact.bodyB.categoryBitMask == openingMask{
+            score += 1
+            scoreLabelNode.text = "\(score)"
+        } else if contact.bodyA.categoryBitMask == enemyMask || contact.bodyB.categoryBitMask == enemyMask
+        {
+            self.physicsWorld.contactDelegate = nil
+            self.finish()
+        }
+        
     }
     
-    
+    func finish(){
+        
+        bird.removeAllActions()
+        movingGameObjects.isPaused = true
+        bird.physicsBody?.isDynamic = false
+        
+        let firstPause = SKAction.wait(forDuration: 1.0)
+        let secondPause = SKAction.wait(forDuration: 3.0)
+        
+        bird.run(firstPause){
+            self.bird.physicsBody?.isDynamic = true
+            self.bird.physicsBody?.velocity = CGVector(dx:0,dy:0)
+            self.bird.physicsBody?.applyImpulse(CGVector(dx:-5,dy:150))
+            self.bird.run(secondPause,completion:{
+                
+                self.removeAllChildren()
+                self.removeAllActions()
+                
+                let scene = GameScene(fileNamed:"GameScene")
+                scene?.scaleMode = .aspectFill
+                let transition = SKTransition.doorsCloseHorizontal(withDuration: 1.0)
+                self.view?.presentScene(scene!,transition:transition)
+            
+        })
+        
+    }
+    }
     
 }
